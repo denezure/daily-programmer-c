@@ -313,6 +313,14 @@ s32 bankers_state_run(struct bankers_state *state)
                     }
                     printf("%u\n", state_stack[state->process_count - 1].process_id[0]);
 
+                    for (u32 i = 0; i < state->process_count; ++i)
+                    {
+                        bankers_state_free(&state_stack[i]);
+                    }
+
+                    FREE_CLEAR(state_stack);
+                    FREE_CLEAR(process_tmp);
+
                     return 0;
                 }
 
@@ -326,6 +334,7 @@ s32 bankers_state_run(struct bankers_state *state)
                 struct bankers_state *next_state = &state_stack[stack_index + 1];
 
                 // Copy the current state into the next stack index
+                // This will be free()'d when?
                 bankers_state_copy(next_state, cur_state);
 
                 u32 *process_allocated = &cur_state->allocated[process_index * cur_state->resource_count];
@@ -381,31 +390,39 @@ s32 bankers_state_run(struct bankers_state *state)
                 // Increment the stack index to check subsequent frames
                 stack_index++;
             }
-            else
-            {
-                // Next process should be tested. No action needed.
-            }
         }
         // If no candidate was found, this frame failed and we need to backtrack to the previous frame
         if (!candidate_found)
         {
             // Free the current frame and decrement the stack index
-            bankers_state_free(&state_stack[stack_index]);
             if (stack_index == 0)
             {
+                for (u32 i = 0; i < state->process_count; ++i)
+                {
+                    bankers_state_free(&state_stack[i]);
+                }
+
+                FREE_CLEAR(state_stack);
+                FREE_CLEAR(process_tmp);
                 return -1;
             }
+            else
+            {
+                bankers_state_free(cur_state);
+            }
             stack_index -= 1;
-        }
-        else
-        {
-            // Decrement this to un-do what the last for-loop iteration did
-            cur_state->process_index -= 1;
         }
 
         // If the process index increases beyond the provided processes, no solution exists
     } while (state_stack[0].process_index < state->process_count);
 
+    for (u32 i = 0; i < state->process_count; ++i)
+    {
+        bankers_state_free(&state_stack[i]);
+    }
+
+    FREE_CLEAR(state_stack);
+    FREE_CLEAR(process_tmp);
     return -1;
 }
 
@@ -425,7 +442,11 @@ int main(void)
     }
 
     // Finally, run through the algorithm
-    bankers_state_run(&state);
+    res = bankers_state_run(&state);
+    if (res)
+    {
+        printf("No solution.\n");
+    }
 
     // Re-claim memory
     bankers_state_free(&state);
